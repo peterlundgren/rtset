@@ -1,0 +1,9 @@
+#!/bin/sh
+
+file=$1
+
+grep "^[^#]" $file | while IFS=":" read -r pattern priority
+do
+    ps -e -o pid= -o cmd= |
+        awk "/^[ 0-9]+ ${pattern}/ {system(\"chrt -f -p ${priority} \" \$1)}"
+done
