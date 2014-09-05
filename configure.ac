@@ -1,0 +1,4 @@
+AC_INIT([rtset], 0)
+AM_INIT_AUTOMAKE
+AC_CONFIG_FILES([Makefile])
+AC_OUTPUT
