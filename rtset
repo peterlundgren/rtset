@@ -4,6 +4,6 @@ file=$1
 
 grep "^[^#]" $file | while IFS=":" read -r pattern priority affinity
 do
-    ps -e -o pid= -o cmd= |
+    ps -eL -o tid= -o comm= |
         awk "/^[ 0-9]+ ${pattern}/ {system(\"chrt -f -p ${priority} \" \$1 \" && taskset -p ${affinity} \" \$1)}"
 done
