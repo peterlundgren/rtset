@@ -2,8 +2,8 @@
 
 file=$1
 
-grep "^[^#]" $file | while IFS=":" read -r pattern priority
+grep "^[^#]" $file | while IFS=":" read -r pattern priority affinity
 do
     ps -e -o pid= -o cmd= |
-        awk "/^[ 0-9]+ ${pattern}/ {system(\"chrt -f -p ${priority} \" \$1)}"
+        awk "/^[ 0-9]+ ${pattern}/ {system(\"chrt -f -p ${priority} \" \$1 \" && taskset -p ${affinity} \" \$1)}"
 done
