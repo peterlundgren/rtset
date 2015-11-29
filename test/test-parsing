@@ -1,0 +1,75 @@
+#!/bin/bash
+
+. ./test.sh
+
+cat << EOF | ../src/rtset -
+EOF
+assert_pass "Empty file"
+
+cat << EOF | ../src/rtset -
+invalid
+EOF
+assert_fail "Invalid File"
+
+cat << EOF | ../src/rtset -
+[testfoo]
+EOF
+assert_pass "Valid section"
+
+cat << EOF | ../src/rtset -
+[invalid]
+EOF
+assert_fail "Unknown section"
+
+cat << EOF | ../src/rtset -
+[testfoo]
+    testbar = baz
+EOF
+assert_pass "Valid parameter"
+
+cat << EOF | ../src/rtset -
+[testfoo]
+    invalid = baz
+EOF
+assert_fail "Unknown parameter"
+
+echo -n "[test" | ../src/rtset -
+assert_fail "Unexpected end of file"
+
+cat << EOF | ../src/rtset -
+[test
+EOF
+assert_fail "Unexpected newline"
+
+cat << EOF | ../src/rtset -
+[1bad]
+EOF
+assert_fail "Section names must contain only [a-z]"
+
+echo -ne "[testfoo]\ntest" | ../src/rtset -
+assert_fail "Unexpected end of file"
+
+cat << EOF | ../src/rtset -
+[testfoo]
+    test
+EOF
+assert_fail "Unexpected newline"
+
+cat << EOF | ../src/rtset -
+[testfoo]
+    bad1
+EOF
+assert_fail "Parameter names must contain only [a-z]"
+
+cat << EOF | ../src/rtset -
+1bad
+EOF
+assert_fail "Unexpected character"
+
+cat << EOF | ../src/rtset -
+[testfoo]
+    testbar baz
+EOF
+assert_fail "Expecting '='"
+
+end_test

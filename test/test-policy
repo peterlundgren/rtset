@@ -1,0 +1,75 @@
+#!/bin/bash
+
+. ./test.sh
+
+cat << EOF | ../src/rtset -
+[rules]
+    pattern    policy
+    ---------  ------
+    rtset-foo  BAD
+EOF
+assert_fail "Unrecognized scheduling policy"
+
+./test-program rtset-foo &
+pid=$!
+cat << EOF | ../src/rtset -
+[rules]
+    pattern    policy
+    ---------  ------
+    rtset-foo  *
+EOF
+assert_pass "Policy leave alone"
+assert_equals $(./get-config policy $pid) "OTHER"
+kill -sigint $pid
+
+./test-program rtset-foo &
+pid=$!
+cat << EOF | ../src/rtset -
+[rules]
+    pattern    policy
+    ---------  ------
+    rtset-foo  OTHER
+EOF
+assert_pass "Policy OTHER"
+assert_equals $(./get-config policy $pid) "OTHER"
+kill -sigint $pid
+
+./test-program rtset-foo &
+pid=$!
+cat << EOF | ../src/rtset -
+[rules]
+    pattern    policy
+    ---------  ------
+    rtset-foo  BATCH
+EOF
+assert_pass "Policy BATCH"
+assert_equals $(./get-config policy $pid) "BATCH"
+kill -sigint $pid
+
+./test-program rtset-foo &
+pid=$!
+cat << EOF | sudo ../src/rtset -
+[rules]
+    pattern    policy  rtprio
+    ---------  ------  ------
+    rtset-foo  FIFO    50
+EOF
+assert_pass "Policy FIFO"
+assert_equals $(./get-config policy $pid) "FIFO"
+assert_equals $(./get-config rt_priority $pid) "50"
+kill -sigint $pid
+
+./test-program rtset-foo &
+pid=$!
+cat << EOF | sudo ../src/rtset -
+[rules]
+    pattern    policy  rtprio
+    ---------  ------  ------
+    rtset-foo  RR      50
+EOF
+assert_pass "Policy RR"
+assert_equals $(./get-config policy $pid) "RR"
+assert_equals $(./get-config rt_priority $pid) "50"
+kill -sigint $pid
+
+end_test
