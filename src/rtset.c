@@ -1,40 +1,9 @@
-/*
-
-/proc/[pid]/comm
-/proc/[pid]/task/[tid]/comm
-/proc/[pid]/stat
-
-
-
-
-       #include <sched.h>
-
-       int sched_setscheduler(pid_t pid, int policy,
-           const struct sched_param *param);
-
-sched_setscheduler(4485, SCHED_FIFO, { 50 }) = 0
-
-       int sched_setaffinity(pid_t pid, size_t cpusetsize,
-                             const cpu_set_t *mask);
-
--lnuma
-libnuma
-numaif.h
-numactl
-       long set_mempolicy(int mode, const unsigned long *nodemask,
-                          unsigned long maxnode);
-
-       int numa_sched_setaffinity(pid_t pid, struct bitmask *mask);
-       int numa_move_pages(int pid, unsigned long count, void **pages, const  
-       int *nodes, int *status, int flags);
-       int  numa_migrate_pages(int  pid,  struct  bitmask *fromnodes, struct  
-       bitmask *tonodes);    
-*/
 const char *usage_text =
 "rtset file\n";
 
 #define _GNU_SOURCE
 #include <dirent.h>
+#include <inttypes.h>
 #include <regex.h>
 #include <sched.h>
 #include <stdarg.h>
@@ -54,17 +23,16 @@ static void usage()
 	printf("%s", usage_text);
 }
 
-struct section_foo {
-	char *bar;
+struct section_testfoo {
+	char *testbar;
 };
 
 enum parameter_policy {
-	CONFIG_SCHED_LEAVE_ALONE,
-	CONFIG_SCHED_BATCH,
-	CONFIG_SCHED_FIFO,
-	CONFIG_SCHED_IDLE,
 	CONFIG_SCHED_OTHER,
-	CONFIG_SCHED_RR
+	CONFIG_SCHED_FIFO,
+	CONFIG_SCHED_RR,
+	CONFIG_SCHED_BATCH,
+	CONFIG_SCHED_LEAVE_ALONE = -1
 };
 
 enum parameter_priority_action {
@@ -94,7 +62,7 @@ struct section_rules {
 };
 
 struct config {
-	struct section_foo foo;
+	struct section_testfoo testfoo;
 	struct section_rules rules;
 };
 
@@ -110,7 +78,7 @@ struct config_file {
 	char parameter[MAX_SECTION_LENGHT];
 	char value[MAX_VALUE_LENGHT];
 	int (*set_parameter)(struct config_file *);
-	int (*set_value)(struct config *, struct config_file *);
+	void (*set_value)(struct config *, struct config_file *);
 };
 
 struct process_list {
@@ -135,7 +103,7 @@ static int is_int(char c)
 static void pdie(const char *s)
 {
 	perror(s);
-	exit(1);
+	exit(EXIT_FAILURE);
 }
 
 static void die(const char *format, ...)
@@ -145,7 +113,7 @@ static void die(const char *format, ...)
 	va_start(ap, format);
 	vfprintf(stderr, format, ap);
 	va_end(ap);
-	exit(1);
+	exit(EXIT_FAILURE);
 }
 
 static void *malloc_or_die(size_t size)
@@ -190,7 +158,12 @@ static struct process_list *alloc_process_list()
 
 static int open_config_file(struct config_file *cf, char *filename)
 {
-	cf->f = fopen(filename, "r");
+	if (strcmp(filename, "-") == 0) {
+		cf->f = stdin;
+		cf->filename = "<stdin>";
+	} else {
+		cf->f = fopen(filename, "r");
+	}
 	if (cf->f) {
 		cf->filename = strdup(filename);
 		cf->line_number = 1;
@@ -243,7 +216,7 @@ static void vparse_error_at(struct config_file *cf, int line_number,
 		fputc('\n', stderr);
 	}
 	fprintf(stderr, "%*c^\n", column_number, ' ');
-	exit(1);
+	exit(EXIT_FAILURE);
 }
 
 static void parse_error_at(struct config_file *cf, int line_number,
@@ -271,7 +244,7 @@ void trim(char *str)
 
 	/* Trim leading whitespace */
 	while(*leading == ' ')
-		*leading++;
+		(*leading)++;
 
 	/* Copy string in place if there was any leading whitespace */
 	if (leading != str) {
@@ -307,19 +280,17 @@ static int get_next_char(struct config_file *cf)
 	return cf->c;
 }
 
-static int set_foo_bar_value(struct config *config, struct config_file *cf)
+static void set_testfoo_testbar_value(struct config *config, struct config_file *cf)
 {
-	//printf("Bar value: '%s'\n", cf->value);
-	config->foo.bar = strdup(cf->value);
+	config->testfoo.testbar = strdup(cf->value);
 }
 
-static int set_foo_parameter(struct config_file *cf)
+static int set_testfoo_parameter(struct config_file *cf)
 {
 	char *parameter = cf->parameter;
 
-	//printf("Parameter: '%s'\n", cf->parameter);
-	if (strcmp(parameter, "bar") == 0) {
-		cf->set_value = set_foo_bar_value;
+	if (strcmp(parameter, "testbar") == 0) {
+		cf->set_value = set_testfoo_testbar_value;
 	} else {
 		return 0;
 	}
@@ -330,9 +301,8 @@ static int set_section(struct config_file *cf)
 {
 	char *section = cf->section;
 
-	//printf("Section: '%s'\n", cf->section);
-	if (strcmp(section, "foo") == 0) {
-		cf->set_parameter = set_foo_parameter;
+	if (strcmp(section, "testfoo") == 0) {
+		cf->set_parameter = set_testfoo_parameter;
 	} else if (strcmp(section, "rules") == 0) {
 		cf->set_parameter = NULL;
 	} else {
@@ -390,8 +360,6 @@ static void parse_expect(struct config_file *cf, char expect)
 static void parse_value(struct config *config, struct config_file *cf)
 {
 	int c, i, comment = 0;
-	int line_number = cf->line_number;
-	int column_number = cf->column_number;
 
 	for (i = 0; i < MAX_VALUE_LENGHT; i++) {
 		c = get_next_char(cf);
@@ -472,8 +440,6 @@ static void parse_policy(struct config_file *cf, struct config_rule *rule, char 
 		rule->policy = CONFIG_SCHED_BATCH;
 	else if (strcmp(policy, "FIFO") == 0)
 		rule->policy = CONFIG_SCHED_FIFO;
-	else if (strcmp(policy, "IDLE") == 0)
-		rule->policy = CONFIG_SCHED_IDLE;
 	else if (strcmp(policy, "OTHER") == 0)
 		rule->policy = CONFIG_SCHED_OTHER;
 	else if (strcmp(policy, "RR") == 0)
@@ -505,8 +471,8 @@ static void parse_affinity(struct config_file *cf, struct config_rule *rule, cha
 		rule->affinity_action = CONFIG_AFFINITY_SET;
 		rule->affinity = strtol(affinity, NULL, 0);
 		if (strncmp(affinity, "0x", 2) == 0) {
-			for (bit = 1, i = 1; bit; bit <<= 1, i++)
-				if (bit | rule->affinity)
+			for (bit = 1, i = 0; bit; bit <<= 1, i++)
+				if (bit & rule->affinity)
 					CPU_SET(i, &rule->cpuset);
 		} else if (is_int(affinity[0])) {
 			CPU_SET(rule->affinity, &rule->cpuset);
@@ -527,6 +493,7 @@ static void (*get_column_parser(struct config_file *cf, char *column))(struct co
 	if (strcmp(column, "affinity") == 0)
 		return parse_affinity;
 	parse_error(cf, "Unrecognized column name '%s'\n", column);
+	return NULL;
 }
 
 static void parse_rules(struct config *config, struct config_file *cf)
@@ -640,7 +607,7 @@ static void parse_config(struct config *config, struct config_file *cf)
 /* Requires Linux 2.5.19 */
 static struct process_list *parse_stat(pid_t the_pid, pid_t the_tid)
 {
-	int pid, ppid, pgrp, session, tty_nr, tpgid, exit_signal, processor;
+	int ppid, pgrp, session, tty_nr, tpgid, exit_signal, processor;
 	unsigned int flags, rt_priority, policy;
 	unsigned long int minflt, cminflt, majflt, cmajflt, utime, stime,
 			vsize, rsslim, startcode, endcode, startstack, kstkesp,
@@ -665,7 +632,7 @@ static struct process_list *parse_stat(pid_t the_pid, pid_t the_tid)
 	if (!f)
 		return NULL;
 
-	while (c = fgetc(f)) {
+	while ((c = fgetc(f))) {
 		if (c == '(') {
 			is_comm = 1;
 		} else if (c == ')' || i > 15) {
@@ -676,7 +643,7 @@ static struct process_list *parse_stat(pid_t the_pid, pid_t the_tid)
 		}
 	}
 
-	fscanf(f, " %c %d %d %d %d %d %u %lu %lu %lu %lu %lu %lu %ld %ld %ld %ld %ld %ld %llu %lu %d %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %d %d %u %u ", &state, &ppid, &pgrp, &session, &tty_nr, &tpgid, &flags, &minflt, &cminflt, &majflt, &cmajflt, &utime, &stime, &cutime, &cstime, &priority, &nice, &num_threads, &itrealvalue, &starttime, &vsize, &rss, &rsslim, &startcode, &endcode, &startstack, &kstkesp, &kstkeip, &signal, &blocked, &sigignore, &sigcatch, &wchan, &nswap, &cnswap, &exit_signal, &processor, &rt_priority, &policy);
+	fscanf(f, " %c %d %d %d %d %d %u %lu %lu %lu %lu %lu %lu %ld %ld %ld %ld %ld %ld %llu %lu %ld %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %d %d %u %u ", &state, &ppid, &pgrp, &session, &tty_nr, &tpgid, &flags, &minflt, &cminflt, &majflt, &cmajflt, &utime, &stime, &cutime, &cstime, &priority, &nice, &num_threads, &itrealvalue, &starttime, &vsize, &rss, &rsslim, &startcode, &endcode, &startstack, &kstkesp, &kstkeip, &signal, &blocked, &sigignore, &sigcatch, &wchan, &nswap, &cnswap, &exit_signal, &processor, &rt_priority, &policy);
 	fclose(f);
 
 	ps = alloc_process_list();
@@ -704,7 +671,7 @@ static struct process_list *get_ps()
 		pdie("Could not open /proc/");
 
 	while ((proc_dirent = readdir(proc_dir)) != NULL) {
-		if (!proc_dirent->d_type == DT_DIR)
+		if (proc_dirent->d_type != DT_DIR)
 			continue;
 		if (!is_int(proc_dirent->d_name[0]))
 			continue;
@@ -718,7 +685,7 @@ static struct process_list *get_ps()
 		}
 
 		while ((task_dirent = readdir(task_dir)) != NULL) {
-			if (!task_dirent->d_type == DT_DIR)
+			if (task_dirent->d_type != DT_DIR)
 				continue;
 			if (!is_int(task_dirent->d_name[0]))
 				continue;
@@ -740,57 +707,25 @@ static struct process_list *get_ps()
 	return ps_head;
 }
 
-static void print_config(struct config *config)
-{
-	struct config_rule *rule;
-	int i = 0;
-
-	printf("foo.bar = %s\n", config->foo.bar);
-	rule = config->rules.list;
-	while (rule != NULL) {
-		printf("Rule %d\n", i);
-		printf("  Pattern: %s\n", rule->pattern);
-		printf("  Sched: %d\n", rule->policy);
-		switch (rule->priority_action) {
-		case CONFIG_PRIORITY_LEAVE_ALONE:
-			printf("  Priority: Leave alone\n");
-			break;
-		case CONFIG_PRIORITY_SET:
-			printf("  Priority: %d\n", rule->rt_priority);
-			break;
-		}
-		switch (rule->affinity_action) {
-		case CONFIG_AFFINITY_LEAVE_ALONE:
-			printf("  Affinity: Leave alone\n");
-			break;
-		case CONFIG_AFFINITY_SET:
-			printf("  Affinity: %d\n", rule->affinity);
-			break;
-		}
-		rule = rule->next;
-		i++;
-	}
-}
-
 static void apply_rule(struct config_rule *rule, struct process_list *ps)
 {
 	int policy;
 	unsigned int rt_priority;
 	struct sched_param param;
-	cpu_set_t mask;
 
 	printf("Match pid: %d tid: %d comm: %s pattern: %s\n", ps->pid, ps->tid, ps->comm, rule->pattern);
-	if (rule->policy) {
-		policy = rule->policy;
-	} else {
+	if (rule->policy == CONFIG_SCHED_LEAVE_ALONE) {
 		policy = ps->policy;
+	} else {
+		policy = rule->policy;
 	}
 	if (rule->priority_action == CONFIG_PRIORITY_SET) {
 		rt_priority = rule->rt_priority;
 	} else {
 		rt_priority = ps->rt_priority;
 	}
-	if (rule->policy || rule->priority_action == CONFIG_PRIORITY_SET) {
+	if (rule->policy != CONFIG_SCHED_LEAVE_ALONE ||
+	    rule->priority_action == CONFIG_PRIORITY_SET) {
 		param.sched_priority = rt_priority;
 		//printf("sched_setscheduler(%d, %d, { %d });\n", ps->tid, policy, param);
 		sched_setscheduler(ps->tid, policy, &param);
@@ -821,7 +756,7 @@ static void apply_config(struct config *config, struct process_list *ps)
 	}
 }
 
-int main(int argc, void *argv[])
+int main(int argc, char *argv[])
 {
 	struct config *config = alloc_config();
 	struct config_file *cf = alloc_config_file();
@@ -829,10 +764,14 @@ int main(int argc, void *argv[])
 	int err = 0;
 	char *filename;
 
-	if (argc < 2)
+	if (argc < 2) {
+		usage();
 		die("No file specified\n");
-	if (argc > 2)
+	}
+	if (argc > 2) {
+		usage();
 		die("Too many arguments\n");
+	}
 	filename = argv[1];
 
 	err = open_config_file(cf, filename);
@@ -840,11 +779,9 @@ int main(int argc, void *argv[])
 		pdie("Could not open config file");
 
 	parse_config(config, cf);
-	//print_config(config);
 	ps = get_ps();
 	apply_config(config, ps);
 
-close_config_file:
 	close_config_file(cf);
 	return err;
 }

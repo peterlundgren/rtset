@@ -1,0 +1,65 @@
+#!/bin/bash
+
+. ./test.sh
+
+./test-program rtset-foo &
+pid=$!
+cat << EOF | ../src/rtset -
+[rules]
+    pattern    affinity
+    ---------  -------
+    rtset-foo  0
+EOF
+assert_pass "Affinity"
+assert_equals $(cat /proc/$pid/status | grep Cpus_allowed: | rev | cut -c1) "1"
+kill -sigint $pid
+
+./test-program rtset-foo &
+pid=$!
+cat << EOF | ../src/rtset -
+[rules]
+    pattern    affinity
+    ---------  -------
+    rtset-foo  1
+EOF
+assert_pass "Affinity"
+assert_equals $(cat /proc/$pid/status | grep Cpus_allowed: | rev | cut -c1) "2"
+kill -sigint $pid
+
+./test-program rtset-foo &
+pid=$!
+cat << EOF | ../src/rtset -
+[rules]
+    pattern    affinity
+    ---------  -------
+    rtset-foo  0x1
+EOF
+assert_pass "Affinity"
+assert_equals $(cat /proc/$pid/status | grep Cpus_allowed: | rev | cut -c1) "1"
+kill -sigint $pid
+
+./test-program rtset-foo &
+pid=$!
+cat << EOF | ../src/rtset -
+[rules]
+    pattern    affinity
+    ---------  -------
+    rtset-foo  0x2
+EOF
+assert_pass "Affinity"
+assert_equals $(cat /proc/$pid/status | grep Cpus_allowed: | rev | cut -c1) "2"
+kill -sigint $pid
+
+./test-program rtset-foo &
+pid=$!
+cat << EOF | ../src/rtset -
+[rules]
+    pattern    affinity
+    ---------  -------
+    rtset-foo  0x3
+EOF
+assert_pass "Affinity"
+assert_equals $(cat /proc/$pid/status | grep Cpus_allowed: | rev | cut -c1) "3"
+kill -sigint $pid
+
+end_test

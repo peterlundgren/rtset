@@ -1,0 +1,13 @@
+#!/bin/bash
+
+. ./test.sh
+
+cat << EOF | ../src/rtset
+EOF
+assert_fail "No file specified"
+
+cat << EOF | ../src/rtset foo bar
+EOF
+assert_fail "Too many arguments"
+
+end_test
