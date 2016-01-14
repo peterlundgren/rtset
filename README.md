@@ -13,3 +13,11 @@ This package uses autotools. To build and install from this source:
     ./configure
     make
     make install
+
+
+Build RPM
+---------
+
+    autoreconf --install
+    ./configure
+    make rpm

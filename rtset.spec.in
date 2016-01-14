@@ -1,0 +1,26 @@
+%define ver VERSION
+%define rel RELEASE
+
+Name: rtset
+Summary: Configure real-time priorities with a centralized configuration file.
+Version: %{ver}
+Release: %{rel}%{?dist}
+Source: %{name}-%{version}-%{rel}.tar.gz
+License: MIT
+
+%description
+Configure real-time priorities with a centralized configuration file.
+
+%prep
+%setup
+
+%build
+autoreconf --install
+./configure
+make
+
+%install
+%makeinstall
+
+%files
+%{_bindir}/rtset

@@ -16,3 +16,5 @@ test-driver
 src/rtset
 test/test-program
 test/get-config
+rtset.spec
+workdir/

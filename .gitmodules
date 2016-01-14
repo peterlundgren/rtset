@@ -1,0 +1,3 @@
+[submodule "git-rpm-version"]
+	path = git-rpm-version
+	url = https://github.com/peterlundgren/git-rpm-version.git
